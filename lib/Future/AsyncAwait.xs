@@ -2093,8 +2093,6 @@ static OP *pp_await(pTHX)
   mPUSHs(newSVsv(state->returning_future));
   PUTBACK;
 
-  if(!SvWEAKREF(state->returning_future))
-    sv_rvweaken(state->returning_future);
   if(!SvROK(state->returning_future))
     panic("ARGH we lost state->returning_future for curcv=%p\n", curcv);
 
