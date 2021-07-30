@@ -2021,7 +2021,6 @@ static OP *pp_await(pTHX)
     croak("Expected a blessed object reference to await");
 
   if(PL_op->op_flags & OPf_SPECIAL) {
-fprintf(stderr, "future_await_toplevel\n");
     future_await_toplevel(f);
     return PL_op->op_next;
   }
@@ -2132,9 +2131,6 @@ static OP *pp_pushcancel(pTHX)
 
   if(state && state->returning_future) {
     future_on_cancel(state->returning_future, newRV_noinc((SV *)on_cancel));
-
-//    SvREFCNT_dec(state->returning_future);
-//    state->returning_future = NULL;
   }
   else {
     AV *precancel = (AV *)PAD_SVl(PL_op->op_targ);
