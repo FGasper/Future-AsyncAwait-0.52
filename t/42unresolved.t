@@ -4,11 +4,12 @@ use v5.14;
 use warnings;
 
 use Test::More;
+#use Test::FailWarnings;
 use Test::Refcount 0.09 import => [qw( is_refcount refcount )];
 
 use Future;
 
-use Future::AsyncAwait;
+use Future::AsyncAwait future_class => 'Future::Tattler';
 
 my $orig_cxstack_ix = Future::AsyncAwait::__cxstack_ix;
 my $file = quotemeta __FILE__;
@@ -30,64 +31,67 @@ async sub func
 }
 
 # abandoned chain
-{
-   my $f1 = Future->new;
-   my $fret = func( $f1, 1, 2 );
+#{
+#   my $f1 = Future->new;
+#   my $fret = func( $f1, 1, 2 );
+#
+#   undef $fret;
+#   pass( 'abandoned chain does not crash' );
+#}
+#
+## abandoned subsequent (RT129303)
+#{
+#   my $f1 = Future->new;
+#   my $fret = func( $f1, 3, 4 );
+#
+#   undef $fret;
+#
+#   my $warnings = "";
+#   {
+#      local $SIG{__WARN__} = sub { $warnings .= join "", @_ };
+#      $f1->done;
+#   }
+#   pass( 'abandoned subsequent does not crash' );
+#   like( $warnings, qr/^Suspended async sub main::func lost its returning future at $file line \d+/,
+#      'warning from attempted resume' );
+#}
+#
+## abandoned subsequent on anon sub
+#{
+#   my $f1 = Future->new;
+#   my $fret = (async sub { await $f1 })->();
+#
+#   undef $fret;
+#
+#   my $warnings = "";
+#   {
+#      local $SIG{__WARN__} = sub { $warnings .= join "", @_ };
+#      $f1->done;
+#   }
+#   pass( 'abandoned subsequent does not crash' );
+#   like( $warnings, qr/^Suspended async sub CODE\(0x[0-9a-f]+\) in package main lost its returning future at $file line \d+/,
+#      'warning from attempted resume' );
+#}
+#
+## abandoned foreach loop (RT129320)
+#{
+#   my $f1 = Future->new;
+#   my $fret = (async sub { foreach my $f ($f1) { await $f } })->();
+#
+#   undef $fret;
+#   pass( "abandoned foreach loop does not crash" );
+#}
 
-   undef $fret;
-   pass( 'abandoned chain does not crash' );
-}
-
-# abandoned subsequent (RT129303)
-{
-   my $f1 = Future->new;
-   my $fret = func( $f1, 3, 4 );
-
-   undef $fret;
-
-   my $warnings = "";
-   {
-      local $SIG{__WARN__} = sub { $warnings .= join "", @_ };
-      $f1->done;
-   }
-   pass( 'abandoned subsequent does not crash' );
-   like( $warnings, qr/^Suspended async sub main::func lost its returning future at $file line \d+/,
-      'warning from attempted resume' );
-}
-
-# abandoned subsequent on anon sub
-{
-   my $f1 = Future->new;
-   my $fret = (async sub { await $f1 })->();
-
-   undef $fret;
-
-   my $warnings = "";
-   {
-      local $SIG{__WARN__} = sub { $warnings .= join "", @_ };
-      $f1->done;
-   }
-   pass( 'abandoned subsequent does not crash' );
-   like( $warnings, qr/^Suspended async sub CODE\(0x[0-9a-f]+\) in package main lost its returning future at $file line \d+/,
-      'warning from attempted resume' );
-}
-
-# abandoned foreach loop (RT129320)
-{
-   my $f1 = Future->new;
-   my $fret = (async sub { foreach my $f ($f1) { await $f } })->();
-
-   undef $fret;
-   pass( "abandoned foreach loop does not crash" );
-}
+diag '===============================';
 
 # abandoned local $@
 {
    my $errsv_refcount = refcount(\$@);
    my $errgv_refcount = refcount($errgv_ref);
 
-   my $f1 = Future->new;
+   my $f1 = Future::Tattler->new;
    my $fret = (async sub { local $@; await $f1 })->();
+   #my $fret = (async sub { local $@; $f1 })->();
 
    undef $fret;
    undef $f1;
@@ -101,3 +105,19 @@ is( Future::AsyncAwait::__cxstack_ix, $orig_cxstack_ix,
    'cxstack_ix did not grow during the test' );
 
 done_testing;
+
+{
+package Future::Tattler;
+
+use parent -norequire => 'Future';
+
+sub DESTROY {
+    if (${^GLOBAL_PHASE} eq 'DESTRUCT') {
+use Data::Dumper;
+local $Data::Dumper::Deparse = 1;
+        warn "Destroying $_[0] at global destruction; leak likely!";
+#print STDERR Dumper $_[0];
+    }
+}
+
+}

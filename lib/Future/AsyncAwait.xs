@@ -5,6 +5,8 @@
  */
 #define PERL_NO_GET_CONTEXT
 
+#define DEBUG 1
+
 #include "EXTERN.h"
 #include "perl.h"
 #include "XSUB.h"
@@ -408,6 +410,8 @@ static SuspendedState *MY_suspendedstate_new(pTHX_ CV *cv)
 
 static int suspendedstate_free(pTHX_ SV *sv, MAGIC *mg)
 {
+  TRACEPRINT("ENTER suspendedstate_free %p (phase=%d)\n", sv, PL_phase);
+
   SuspendedState *state = (SuspendedState *)mg->mg_ptr;
 
   if(state->awaiting_future) {
@@ -1944,6 +1948,7 @@ static OP *pp_await(pTHX)
   TRACEPRINT("ENTER await curcv=%p [%s:%d]\n", curcv, CopFILE(PL_curcop), CopLINE(PL_curcop));
 
   if(state && state->awaiting_future) {
+fprintf(stderr,"have awaiting future\n");
     if(!SvROK(state->returning_future) || future_is_cancelled(state->returning_future)) {
       if(!SvROK(state->returning_future)) {
         GV *gv = CvGV(curcv);
@@ -2003,6 +2008,7 @@ static OP *pp_await(pTHX)
 #endif
   }
   else {
+fprintf(stderr,"no awaiting future\n");
     f = POPs;
     PUTBACK;
   }
@@ -2011,6 +2017,7 @@ static OP *pp_await(pTHX)
     croak("Expected a blessed object reference to await");
 
   if(PL_op->op_flags & OPf_SPECIAL) {
+fprintf(stderr, "future_await_toplevel\n");
     future_await_toplevel(f);
     return PL_op->op_next;
   }
@@ -2072,6 +2079,8 @@ static OP *pp_await(pTHX)
 
   if(!state->returning_future) {
     state->returning_future = future_new_from_proto(f);
+warn("created returning_future\n");
+sv_dump(state->returning_future);
     if(precancel) {
       I32 i;
       for(i = 0; i < av_count(precancel); i++)
@@ -2093,8 +2102,8 @@ static OP *pp_await(pTHX)
   mPUSHs(newSVsv(state->returning_future));
   PUTBACK;
 
-  if(!SvWEAKREF(state->returning_future))
-    sv_rvweaken(state->returning_future);
+//  if(!SvWEAKREF(state->returning_future))
+//    sv_rvweaken(state->returning_future);
   if(!SvROK(state->returning_future))
     panic("ARGH we lost state->returning_future for curcv=%p\n", curcv);
 
@@ -2106,6 +2115,9 @@ static OP *pp_await(pTHX)
     panic("ARGH we lost state->returning_future for curcv=%p\n", curcv);
   if(!SvROK(state->awaiting_future))
     panic("ARGH we lost state->awaiting_future for curcv=%p\n", curcv);
+
+warn("dumping returning_future\n");
+//if (state->returning_future) sv_dump(state->returning_future);
 
   TRACEPRINT("LEAVE await curcv=%p [%s:%d]\n", curcv, CopFILE(PL_curcop), CopLINE(PL_curcop));
 
@@ -2121,6 +2133,9 @@ static OP *pp_pushcancel(pTHX)
 
   if(state && state->returning_future) {
     future_on_cancel(state->returning_future, newRV_noinc((SV *)on_cancel));
+
+    SvREFCNT_dec(state->returning_future);
+    state->returning_future = NULL;
   }
   else {
     AV *precancel = (AV *)PAD_SVl(PL_op->op_targ);
