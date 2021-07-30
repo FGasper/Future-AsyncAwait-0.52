@@ -4,6 +4,7 @@ use v5.14;
 use warnings;
 
 use Test::More;
+use Test::FailWarnings;
 use Test::Refcount 0.09 import => [qw( is_refcount refcount )];
 
 use Future;

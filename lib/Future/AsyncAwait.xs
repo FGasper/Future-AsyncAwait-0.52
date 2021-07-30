@@ -56,6 +56,10 @@
 
 #include "perl-additions.c.inc"
 
+#define WARN_IF_LEAKED() STMT_START {   \
+    if (PL_dirty) warn("%s called during global destruction; memory leak likely!\n", __func__); \
+} STMT_END
+
 /* Currently no version of perl makes this visible, so we always want it. Maybe
  * one day in the future we can make it version-dependent
  */
@@ -408,6 +412,10 @@ static SuspendedState *MY_suspendedstate_new(pTHX_ CV *cv)
 
 static int suspendedstate_free(pTHX_ SV *sv, MAGIC *mg)
 {
+  WARN_IF_LEAKED();
+
+  TRACEPRINT("ENTER %s %p (phase=%d)\n", __func__, sv, PL_phase);
+
   SuspendedState *state = (SuspendedState *)mg->mg_ptr;
 
   if(state->awaiting_future) {
@@ -566,6 +574,8 @@ static int suspendedstate_free(pTHX_ SV *sv, MAGIC *mg)
   }
 
   Safefree(state);
+
+  TRACEPRINT("LEAVE %s %p\n", __func__, sv);
 
   return 1;
 }
